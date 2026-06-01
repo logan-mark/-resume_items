@@ -13,12 +13,13 @@ class FinancialReportParser:
         """
         if not text:
             return ""
-        # 剔除纯数字页码
-        text = re.sub(r'^\d+$\n', '', text, flags=re.MULTILINE)
-        # 剔除常见的财报页眉（示例）
-        text = re.sub(r'^.*年度报告.*$\n', '', text, flags=re.MULTILINE)
-        # 清除多余的空行
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        # 剔除纯数字页码（以及带前后空格的数字）
+        text = re.sub(r'^\s*\d+\s*$', '', text, flags=re.MULTILINE)
+        # 清除大段连续的空白字符
+        text = re.sub(r' {4,}','',text)
+        # 把句尾不在段落末尾的单换行符替换为空格
+        #如果换行符前面不是句号问号感叹号，且后面跟着小写字母，说明是句中的物理换行
+        text = re.sub(r'(?<=[^\.!\?])\n\s*(?=[A-Za-z0-z9])', '', text)
         return text.strip()
 
     def extract_table_to_markdown(self, page) -> str:
@@ -40,6 +41,9 @@ class FinancialReportParser:
             # 使用 pandas 转换为 Markdown
             if len(cleaned_table) > 1:
                 df = pd.DataFrame(cleaned_table[1:], columns=cleaned_table[0])
+                #替换空字符串为NaN，并删除全空的列
+                df.replace("",pd.NA,inplace=True)
+                df.dropna(axis=1,how='all',inplace=True)
                 md_tables.append(df.to_markdown(index=False))
 
         return "\n\n".join(md_tables)
@@ -62,9 +66,13 @@ class FinancialReportParser:
         with pdfplumber.open(self.pdf_path) as pdf:
             total_pages = len(pdf.pages)
 
+            start_index=40
+            end_index=60
+
             # 建议测试时先切片，比如 pdf.pages[10:15]，别一上来就跑几百页
-            for i, page in enumerate(pdf.pages):
-                print(f"正在处理第 {i + 1}/{total_pages} 页...")
+            for i, page in enumerate(pdf.pages[start_index:end_index]):
+                real_page_num = start_index + i + 1
+                print(f"正在处理第 {real_page_num}/{total_pages} 页...")
 
                 # 1. 提取文字
                 page_text = self.extract_text_with_layout(page)
@@ -93,6 +101,6 @@ class FinancialReportParser:
 # ==========================================
 if __name__ == "__main__":
     # pip install pdfplumber pandas tabulate
-    parser = FinancialReportParser("你的财报文件.pdf")
+    parser = FinancialReportParser("TSLA_2024.pdf")
     # 强烈建议先用 5-10 页的内容做测试，把正则和表格清洗调优
-    parser.parse("parsed_report.md")
+    parser.parse("parsed_report_2.md")
